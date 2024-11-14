@@ -1,129 +1,153 @@
-import numpy as np 
-import random
+import json
 
-# Parameter
-n = 6  # Ukuran teka-teki
-maxiter = 1000 # Jumlah iterasi maksimum
-np.random.seed(0)
-random.seed(0)
+class Cell:
+    def __init__(self, value=-1):
+        self.domain = [1, 0] if value == -1 else [value]
+        self.value = value
+        self.satisfied = value != -1
+        self.maclist = []
 
-# Matriks teka-teki dengan posisi kosong diisi dengan None
-problem = np.array([
-    [1, None, None, 0, None, None],
-    [None, None, 0, 0, None, 1],
-    [None, 0, 0, None, None, 1],
-    [None, None, None, None, None, None],
-    [0, 0, None, 1, None, None],
-    [None, 1, None, None, 0, 0]
-], dtype=object)
+# Puzzle yang akan dipecahkan
+mypuzzle = [
+    ["1", "-", "-", "0", "-", "-"],
+    ["-", "-", "0", "0", "-", "1"],
+    ["-", "0", "0", "-", "-", "1"],
+    ["-", "-", "-", "-", "-", "-"],
+    ["0", "0", "-", "1", "-", "-"],
+    ["-", "1", "-", "-", "0", "0"]
+]
 
-# Fungsi mengisi tabel teka-teki dengan vektor jawaban
-def fill_puzzle(puzzle, answer_vector):
-    solution = np.copy(puzzle)
-    index = 0
-    for row in range(n):
-        for col in range(n):
-            if solution[row, col] is None:
-                solution[row, col] = answer_vector[index]
-                index += 1
-    return solution
+# Inisialisasi variabel
+mygraph = dict()
+unique_r = dict()
+unique_c = dict()
+steps = []
+startPuzzle = []
 
-# Fungsi menghitung skor pelanggaran
-def calculate_penalty(solution):
-    penalty = 0
+n = 6  # Ukuran puzzle 6x6
 
-    # Skor pelanggaran untuk jumlah 0 dan 1 per kolom
-    col_sums = np.sum(solution, axis=0)
-    penalty += np.sum((col_sums - n // 2) ** 2)
+# Inisialisasi mygraph dengan cell kosong atau nilai awal dari mypuzzle
+for i in range(n):
+    for j in range(n):
+        if mypuzzle[i][j] == '-':
+            mygraph[(i, j)] = Cell(-1)
+        else:
+            mygraph[(i, j)] = Cell(int(mypuzzle[i][j]))
 
-    # Tiga simbol sama berurutan mendatar
-    for row in range(n):
-        for col in range(n - 2):
-            if solution[row, col] == solution[row, col + 1] == solution[row, col + 2]:
-                penalty += 30
+for i in range(n):
+    unique_r[i] = None
+    unique_c[i] = None
 
-    # Tiga simbol sama berurutan vertikal
-    for col in range(n):
-        for row in range(n - 2):
-            if solution[row, col] == solution[row + 1, col] == solution[row + 2, col]:
-                penalty += 30
+def updatestr(graph, n, row=None, column=None):
+    if row is None and column is None:
+        for i in range(n):
+            mystr = ''.join(str(graph[(i, j)].value) for j in range(n) if graph[(i, j)].value != -1)
+            unique_r[i] = mystr if len(mystr) == n else None
 
-    # Kolom yang sama persis
-    for p in range(n - 1):
-        for q in range(p + 1, n):
-            if np.array_equal(solution[:, p], solution[:, q]):
-                penalty += 30
+        for j in range(n):
+            mystr = ''.join(str(graph[(i, j)].value) for i in range(n) if graph[(i, j)].value != -1)
+            unique_c[j] = mystr if len(mystr) == n else None
+    else:
+        row_str = ''.join(str(graph[(row, j)].value) for j in range(n) if graph[(row, j)].value != -1)
+        unique_r[row] = row_str if len(row_str) == n else None
 
-    # Baris yang sama persis
-    for p in range(n - 1):
-        for q in range(p + 1, n):
-            if np.array_equal(solution[p, :], solution[q, :]):
-                penalty += 30
+        col_str = ''.join(str(graph[(i, column)].value) for i in range(n) if graph[(i, column)].value != -1)
+        unique_c[column] = col_str if len(col_str) == n else None
 
-    return penalty
+def check_constraints(graph, n, x, y):
+    row = [graph[(x, j)].value for j in range(n)]
+    col = [graph[(i, y)].value for i in range(n)]
 
-# Inisialisasi vektor jawaban
-ones_needed = np.full(n, n // 2) - np.sum(problem == 1, axis=1)
-zeros_needed = np.full(n, n // 2) - np.sum(problem == 0, axis=1)
-answer_vector = np.concatenate([np.ones(int(ones_needed[i])) for i in range(n)] +
-                               [np.zeros(int(zeros_needed[i])) for i in range(n)])
-np.random.shuffle(answer_vector)
+    # Jumlah angka 1 dan 0 tidak boleh melebihi setengah ukuran n
+    if row.count(1) > n // 2 or row.count(0) > n // 2:
+        return False
+    if col.count(1) > n // 2 or col.count(0) > n // 2:
+        return False
 
-# Simulated Annealing
-best_solution = fill_puzzle(problem, answer_vector)
-best_penalty = calculate_penalty(best_solution)
+    # Tidak boleh ada tiga angka berturut-turut yang sama di baris atau kolom
+    for j in range(n - 2):
+        if row[j] == row[j + 1] == row[j + 2] != -1:
+            return False
+    for i in range(n - 2):
+        if col[i] == col[i + 1] == col[i + 2] != -1:
+            return False
 
-for iteration in range(1, maxiter + 1):
-    improved = False
+    # Baris dan kolom harus unik
+    row_string = ''.join(str(val) for val in row if val != -1)
+    col_string = ''.join(str(val) for val in col if val != -1)
 
-    # Pertukaran dua elemen acak dalam answer_vector
-    for i in range(len(answer_vector) - 1):
-        for j in range(i + 1, len(answer_vector)):
-            # Buat salinan baru dari answer_vector
-            new_answer_vector = answer_vector.copy()
-            new_answer_vector[i], new_answer_vector[j] = new_answer_vector[j], new_answer_vector[i]
+    for i in range(n):
+        if i != x and row_string == unique_r.get(i):
+            return False
+        if i != y and col_string == unique_c.get(i):
+            return False
 
-            # Hitung solusi baru
-            new_solution = fill_puzzle(problem, new_answer_vector)
-            new_penalty = calculate_penalty(new_solution)
+    return True
 
-            # Print solusi pada iterasi ini
-            print(f"Iterasi {iteration} - Penalti: {new_penalty}")
+def MRV(graph, n):
+    x, y = -1, -1
+    min_len_domain = 3
+    for i in range(n):
+        for j in range(n):
+            if graph[(i, j)].value == -1:
+                if len(graph[(i, j)].domain) < min_len_domain:
+                    min_len_domain = len(graph[(i, j)].domain)
+                    x, y = i, j
+    return x, y
 
-            # Simulated Annealing: Jika penalty baru lebih kecil atau berdasarkan probabilitas
-            if new_penalty < best_penalty:
-                answer_vector = new_answer_vector
-                best_solution = new_solution
-                best_penalty = new_penalty
-                improved = True
-                break
-            else:
-                # Probabilitas menerima solusi lebih buruk (simulated annealing)
-                probability = best_penalty / (new_penalty * iteration)
-                if random.random() < probability:
-                    answer_vector = new_answer_vector
-                    best_solution = new_solution
-                    best_penalty = new_penalty
-                    improved = True
-                    break
-        if improved:
-            break
+def backtracking(graph, n):
+    if is_complete(graph, n):
+        return graph
 
-    # Jika menemukan solusi sempurna
-    if best_penalty == 0:
-        print(f"\nSolusi sempurna ditemukan pada iterasi {iteration}")
-        print(best_solution.astype(int))
-        break
-else:
-    print("\nTidak menemukan solusi sempurna, coba tambahkan iterasi")
-    print(best_solution.astype(int))
+    (x, y) = MRV(graph, n)
+    for d in graph[(x, y)].domain:
+        graph[(x, y)].value = d
+        steps.append([x, y, d])
+        updatestr(graph, n, x, y)
 
-# Jika menemukan solusi sempurna
-if best_penalty == 0:
-        best_solution = best_solution.astype(int)  # Konversi elemen-elemen ke integer
-        print(f"Solusi ditemukan pada iterasi {iteration}")
-        print(best_solution)
-else:
-    best_solution = best_solution.astype(int)  # Konversi elemen-elemen ke integer
-    print("Tidak menemukan solusi, coba tambahkan iterasi")
-    print(best_solution)
+        if check_constraints(graph, n, x, y):
+            done = backtracking(graph, n)
+            if done:
+                return graph
+
+        graph[(x, y)].value = -1
+        updatestr(graph, n, x, y)
+        steps.append([x, y, -1])
+
+    return None
+
+def is_complete(graph, n):
+    return all(graph[(i, j)].value != -1 for i in range(n) for j in range(n))
+
+def init(graph, n):
+    for i in range(n):
+        for j in range(n):
+            if graph[(i, j)].value != -1:
+                startPuzzle.append([i, j, graph[(i, j)].value])
+                if not check_constraints(graph, n, i, j):
+                    return False
+    return True
+
+# Menjalankan fungsi utama untuk menyelesaikan puzzle dan mencetak hasilnya
+def main():
+    init(mygraph, n)
+    g = backtracking(mygraph, n)
+    has_answer = g is not None
+
+    if has_answer:
+        print("Solusi Binary Puzzle:")
+        for i in range(n):
+            print(' '.join(str(g[(i, j)].value) for j in range(n)))
+    else:
+        print("The puzzle doesn't have any solution!")
+
+    return json.dumps({
+        "steps": steps,
+        "puzzle": startPuzzle,
+        "len": n,
+        "hasAnswer": has_answer
+    })
+
+# Run the main function
+main()
+
