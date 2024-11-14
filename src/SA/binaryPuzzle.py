@@ -40,25 +40,25 @@ def calculate_penalty(solution):
     for row in range(n):
         for col in range(n - 2):
             if solution[row, col] == solution[row, col + 1] == solution[row, col + 2]:
-                penalty += 30
+                penalty += 1
 
     # Tiga simbol sama berurutan vertikal
     for col in range(n):
         for row in range(n - 2):
             if solution[row, col] == solution[row + 1, col] == solution[row + 2, col]:
-                penalty += 30
+                penalty += 1
 
     # Kolom yang sama persis
     for p in range(n - 1):
         for q in range(p + 1, n):
             if np.array_equal(solution[:, p], solution[:, q]):
-                penalty += 30
+                penalty += 1
 
     # Baris yang sama persis
     for p in range(n - 1):
         for q in range(p + 1, n):
             if np.array_equal(solution[p, :], solution[q, :]):
-                penalty += 30
+                penalty += 1
 
     return penalty
 
@@ -117,13 +117,3 @@ for iteration in range(1, maxiter + 1):
 else:
     print("\nTidak menemukan solusi sempurna, coba tambahkan iterasi")
     print(best_solution.astype(int))
-
-    # Jika menemukan solusi sempurna
-if best_penalty == 0:
-        best_solution = best_solution.astype(int)  # Konversi elemen-elemen ke integer
-        print(f"Solusi ditemukan pada iterasi {iteration}")
-        print(best_solution)
-else:
-    best_solution = best_solution.astype(int)  # Konversi elemen-elemen ke integer
-    print("Tidak menemukan solusi, coba tambahkan iterasi")
-    print(best_solution)
